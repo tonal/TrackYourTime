@@ -15,13 +15,13 @@ mac: QMAKE_MACOSX_DEPLOYMENT_TARGET = 10.8
 TARGET = TrackYourTime
 TEMPLATE = app
 CONFIG+=address_sanitizer
-CONFIG+=C++11
+CONFIG+=C++14
 
 TRANSLATIONS = lang_en.ts  lang_ru.ts
 
 QMAKE_CXXFLAGS += -DQT_COMPILING_QSTRING_COMPAT_CPP
 
-unix:!mac:QMAKE_CXXFLAGS += -std=c++0x
+unix:!mac:QMAKE_CXXFLAGS += -std=c++14
 unix:!mac: LIBS += -rdynamic
 
 win32:QMAKE_LFLAGS_WINDOWS = /SUBSYSTEM:WINDOWS,5.01

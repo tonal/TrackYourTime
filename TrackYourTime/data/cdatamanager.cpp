@@ -64,7 +64,7 @@ cDataManager::cDataManager():QObject()
     m_CurrentMousePos = QPoint(0,0);
     m_CurrentApplicationIndex = -1;
     m_CurrentApplicationActivityIndex = -1;
-    m_CurrentApplicationActivityCategory = 0;
+    m_CurrentApplicationActivityCategory = -1;
 
     m_Idle = false;
     m_IdleCounter = 0;
@@ -292,8 +292,11 @@ void cDataManager::process()
             int activityCategory = m_Applications[m_CurrentApplicationIndex]->activities[m_CurrentApplicationActivityIndex].categories[m_CurrentProfile].category;
 
             if (m_ShowSystemNotifications)
-                if (m_CurrentApplicationActivityCategory!=activityCategory || activityCategory==-1){
-                    QString hint = m_Profiles[m_CurrentProfile].name+":"+(m_CurrentApplicationActivityCategory==-1?tr("Uncategorized"):m_Categories[m_CurrentApplicationActivityCategory].name);
+                if (m_CurrentApplicationActivityCategory != activityCategory || activityCategory==-1){
+                    const QString hint = m_Profiles[m_CurrentProfile].name + ":" +
+                      (m_CurrentApplicationActivityCategory == -1
+                        ? tr("Uncategorized")
+                        : m_Categories[m_CurrentApplicationActivityCategory].name);
                     emit trayShowHint(hint);
                 }
             m_CurrentApplicationActivityCategory = activityCategory;
@@ -506,11 +509,12 @@ void cDataManager::saveDB()
 
 void cDataManager::loadDB()
 {
+    qDebug() << "cDataManager: store file " << m_StorageFileName;
     if (m_StorageFileName.isEmpty())
         return;
     if (!QFile(m_StorageFileName).exists())
         return;
-    qDebug() << "cDataManager: start DB loading\n";
+    qDebug() << "cDataManager: start DB loading";
     for (int i = 0; i<m_Applications.size(); i++)
         delete m_Applications[i];
     m_Applications.resize(0);

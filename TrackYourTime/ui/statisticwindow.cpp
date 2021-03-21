@@ -37,8 +37,8 @@ bool lessThan( const sStatisticItem & e1, const sStatisticItem & e2 )
 
 void StatisticWindow::rebuild(QDate from, QDate to)
 {
-    QDateTime statStart(from);
-    QDateTime statEnd(to.addDays(1));
+    QDateTime statStart = from.startOfDay();
+    QDateTime statEnd = to.addDays(1).startOfDay();
 
     //prepare containers
     m_Uncategorized.TotalTime = 0;
