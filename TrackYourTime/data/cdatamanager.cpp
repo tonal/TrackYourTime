@@ -55,26 +55,22 @@ const QString cDataManager::CONF_BACKUP_FILENAME_ID = "BACKUP_FILENAME";
 const QString cDataManager::CONF_BACKUP_DELAY_ID = "BACKUP_DELAY";
 
 
-cDataManager::cDataManager():QObject()
+cDataManager::cDataManager() :
+  QObject(),
+  m_ShowSystemNotifications(false),
+  m_UpdateCounter(0),
+  m_UpdateDelay(DEFAULT_SECONDS_UPDATE_DELAY),
+  m_CurrentMousePos(QPoint(0,0)),
+  m_CurrentApplicationIndex(-1),
+  m_CurrentApplicationActivityIndex(-1),
+  m_CurrentApplicationActivityCategory(-1),
+  m_Idle(false),
+  m_IdleCounter(0),
+  m_IdleDelay(DEFAULT_SECONDS_IDLE_DELAY),
+  m_AutoSaveCounter(0),
+  m_AutoSaveDelay(DEFAULT_SECONDS_AUTOSAVE_DELAY),
+  m_CurrentProfile(0)
 {
-    m_ShowSystemNotifications = false;
-    m_UpdateCounter = 0;
-    m_UpdateDelay = DEFAULT_SECONDS_UPDATE_DELAY;
-
-    m_CurrentMousePos = QPoint(0,0);
-    m_CurrentApplicationIndex = -1;
-    m_CurrentApplicationActivityIndex = -1;
-    m_CurrentApplicationActivityCategory = -1;
-
-    m_Idle = false;
-    m_IdleCounter = 0;
-    m_IdleDelay = DEFAULT_SECONDS_IDLE_DELAY;    
-
-    m_AutoSaveCounter = 0;
-    m_AutoSaveDelay = DEFAULT_SECONDS_AUTOSAVE_DELAY;
-
-    m_CurrentProfile = 0;
-
 #if (QT_VERSION < QT_VERSION_CHECK(5, 4, 0))
     m_StorageFileName = QStandardPaths::writableLocation(QStandardPaths::DataLocation)+"/db.bin";
 #else
@@ -85,12 +81,11 @@ cDataManager::cDataManager():QObject()
     loadPreferences();
     loadDB();
 
-    if (m_Profiles.size()==0){
+    if (m_Profiles.empty()){
         sProfile defaultProfile;
         defaultProfile.name = tr("Default");
         m_Profiles.push_back(defaultProfile);
     }
-
 
     QObject::connect(&m_MainTimer, SIGNAL(timeout()), this, SLOT(process()));
     m_MainTimer.start(1000);
@@ -99,8 +94,8 @@ cDataManager::cDataManager():QObject()
 cDataManager::~cDataManager()
 {    
     saveDB();
-    for (int i = 0; i<m_Applications.size(); i++)
-        delete m_Applications[i];
+    for (auto app: m_Applications)
+        delete app;
 }
 
 const sProfile *cDataManager::profiles(int index)
@@ -116,12 +111,10 @@ void cDataManager::addNewProfile(const QString &Name, int CloneProfileIndex)
     profile.name = Name;
     m_Profiles.push_back(profile);
 
-    for (int i = 0; i<m_Applications.size(); i++)
-        for (int j = 0; j<m_Applications[i]->activities.size(); j++){
-            sActivityProfileState state;
-            state.category = CloneProfileIndex==-1?-1:m_Applications[i]->activities[j].categories[CloneProfileIndex].category;
-            state.visible = CloneProfileIndex==-1?false:m_Applications[i]->activities[j].categories[CloneProfileIndex].visible;
-            m_Applications[i]->activities[j].categories.push_back(state);
+    const sActivityProfileState def_state = {-1, false};
+    for (auto app: m_Applications)
+        for (auto& act: app->activities) {
+            act.categories.push_back(CloneProfileIndex == -1 ? def_state : act.categories[CloneProfileIndex]);
         }
     emit profilesChanged();
 }
@@ -136,16 +129,16 @@ void cDataManager::mergeProfiles(int profile1, int profile2)
     }
 
     m_Profiles.remove(profileToDelete);
-    for (int i = 0; i<m_Applications.size(); i++)
-        for (int j = 0; j<m_Applications[i]->activities.size(); j++){
-            m_Applications[i]->activities[j].categories.remove(profileToDelete);
-            for (int k = 0; k<m_Applications[i]->activities[j].periods.size(); k++){
-                if (m_Applications[i]->activities[j].periods[k].profileIndex==profileToDelete){
-                    m_Applications[i]->activities[j].periods[k].profileIndex = profileToSave;
+    for (auto app: m_Applications)
+        for (auto& act: app->activities) {
+            act.categories.remove(profileToDelete);
+            for (auto& period: act.periods) {
+                if (period.profileIndex==profileToDelete) {
+                    period.profileIndex = profileToSave;
                 }
                 else
-                if (m_Applications[i]->activities[j].periods[k].profileIndex>profileToDelete){
-                    m_Applications[i]->activities[j].periods[k].profileIndex--;
+                if (period.profileIndex>profileToDelete) {
+                    period.profileIndex--;
                 }
             }
         }
@@ -156,22 +149,20 @@ void cDataManager::mergeProfiles(int profile1, int profile2)
 
 void cDataManager::addNewCategory(const QString &Name, QColor color)
 {
-    sCategory cat;
-    cat.color = color;
-    cat.name = Name;
+    const sCategory cat = {Name, color};
     m_Categories.push_back(cat);
 }
 
 void cDataManager::deleteCategory(int index)
 {
-    for (int i = 0; i<m_Applications.size(); i++){
-        for (int j = 0; j<m_Applications[i]->activities.size(); j++){
-            for (int k = 0; k<m_Applications[i]->activities[j].categories.size(); k++){
-                if (m_Applications[i]->activities[j].categories[k].category==index)
-                    m_Applications[i]->activities[j].categories[k].category = -1;
+    for (auto app: m_Applications) {
+        for (auto& act: app->activities) {
+            for (auto& cat: act.categories) {
+                if (cat.category == index)
+                    cat.category = -1;
                 else
-                if (m_Applications[i]->activities[j].categories[k].category>index)
-                    m_Applications[i]->activities[j].categories[k].category--;
+                if (cat.category > index)
+                    cat.category--;
             }
         }
     }
@@ -181,11 +172,11 @@ void cDataManager::deleteCategory(int index)
 
 void cDataManager::setApplicationActivityCategory(int profile, int appIndex, int activityIndex, int category)
 {
-    if (profile==-1){
-        for (int i = 0; i<m_Applications[appIndex]->activities[activityIndex].categories.size(); i++)
-            m_Applications[appIndex]->activities[activityIndex].categories[i].category = category;
+    if (profile==-1) {
+        for (auto& cat: m_Applications[appIndex]->activities[activityIndex].categories)
+            cat.category = category;
     }
-    else{
+    else {
         m_Applications[appIndex]->activities[activityIndex].categories[profile].category = category;
     }
 
@@ -219,9 +210,10 @@ void cDataManager::makeBackup()
 
     QDateTime now = QDateTime::currentDateTime();
     if (delayDays>-1){
-        QStringList backupFiles = QDir(m_BackupFolder).entryList(QStringList() << "*.backup");
-        for (int i = 0; i<backupFiles.size(); i++){
-            QFileInfo file(m_BackupFolder+"/"+backupFiles[i]);
+        const QDir backFolder = m_BackupFolder;
+        QStringList backupFiles = backFolder.entryList(QStringList() << "*.backup");
+        for (const auto& bf: backupFiles){
+            QFileInfo file(backFolder.filePath(bf));
             if (now.daysTo(file.lastModified())>=delayDays){
                 QFile::remove(file.absoluteFilePath());
             }
@@ -270,14 +262,11 @@ void cDataManager::process()
     int appIndex = getAppIndex(currentAppInfo);
     int activityIndex = appIndex>-1?getActivityIndex(appIndex,currentAppInfo):0;
 
-    if (m_LastLocalActivity>hostActivity){
+    if (m_LastLocalActivity > hostActivity) {
         if (info){
-            sSysInfo remoteInfo;
-            remoteInfo.fileName = info->AppFileName;
-            remoteInfo.path = "";
-            remoteInfo.title = "";
+            const sSysInfo remoteInfo = {"", info->AppFileName, ""};
             appIndex = getAppIndex(remoteInfo);
-            activityIndex = appIndex>-1?getActivityIndexDirect(appIndex,info->State):0;
+            activityIndex = appIndex >-1 ? getActivityIndexDirect(appIndex,info->State) : 0;
             isUserActive = true;
         }
     }
@@ -339,14 +328,15 @@ void cDataManager::process()
     }
 
     if (!m_Idle && m_ClientMode){
-        if (m_CurrentApplicationIndex>-1){
-            m_ExternalTrackers.sendOverrideTracker(m_Applications[m_CurrentApplicationIndex]->activities[0].name,
-                                                   m_Applications[m_CurrentApplicationIndex]->activities[m_CurrentApplicationActivityIndex].name,
-                                                   m_IdleCounter==m_UpdateDelay?0:m_IdleCounter,
-                                                   m_ClientModeHost);
+      const int idleTime = m_IdleCounter == m_UpdateDelay ? 0 : m_IdleCounter;
+      if (m_CurrentApplicationIndex > -1) {
+            m_ExternalTrackers.sendOverrideTracker(
+                m_Applications[m_CurrentApplicationIndex]->activities[0].name,
+                m_Applications[m_CurrentApplicationIndex]->activities[m_CurrentApplicationActivityIndex].name,
+                idleTime, m_ClientModeHost);
         }
         else{
-            m_ExternalTrackers.sendOverrideTracker("","",m_IdleCounter==m_UpdateDelay?0:m_IdleCounter,m_ClientModeHost);
+            m_ExternalTrackers.sendOverrideTracker("", "", idleTime, m_ClientModeHost);
         }
     }
 }
@@ -620,12 +610,13 @@ void cDataManager::saveJSON()
       QJsonObject jobj;
       jobj["name"] = cat.name;
       jobj["color"] = cat.color.name();
+      categories.append(jobj);
     }
     jobj["categories"] = categories;
 
     //applications
     QJsonArray applications;
-    for (const auto& app: m_Applications) {
+    for (const auto app: m_Applications) {
 
       QJsonObject jobj;
       jobj["visible"] = app->visible;
@@ -706,7 +697,7 @@ void cDataManager::loadJSON()
         return;
     }
 
-    for (const auto& app: m_Applications)
+    for (auto app: m_Applications)
         delete app;
     m_Applications.resize(0);
 
@@ -826,27 +817,30 @@ void sActivityInfo::incTime(bool FirstTime, int CurrentProfile, int UpdateDelay)
     periods.last().length+=UpdateDelay;
 }
 
-sAppInfo::sAppInfo(QString name, int profilesCount)
+sAppInfo::sAppInfo(const QString& name, int profilesCount) :
+  visible(true),
+  useCustomScript(false),
+  predefinedInfo(new cAppPredefinedInfo(name))
 {
-    predefinedInfo = new cAppPredefinedInfo(name);
-    visible = true;
-    sActivityInfo ainfo;
-    ainfo.name = name;
-    ainfo.nameUpcase = name.toUpper();
-    ainfo.categories.resize(profilesCount);
-    for (int i = 0; i<ainfo.categories.size(); i++){
-        ainfo.categories[i].category = -1;
-        ainfo.categories[i].visible = false;
-    }
+
+    sActivityInfo ainfo = {
+        name, name.toUpper(), {}, {profilesCount, sActivityProfileState{-1, false}}};
+//    ainfo.categories.resize(profilesCount);
+//    for (int i = 0; i<ainfo.categories.size(); i++){
+//        ainfo.categories[i].category = -1;
+//        ainfo.categories[i].visible = false;
+//    }
     activities.push_back(ainfo);
 
     trackerType = predefinedInfo->trackerType();
     customScript = predefinedInfo->script();
 }
 
-sAppInfo::sAppInfo()
+sAppInfo::sAppInfo() :
+  visible(true),
+  useCustomScript(false),
+  predefinedInfo(nullptr)
 {
-    predefinedInfo = nullptr;
 }
 
 sAppInfo::~sAppInfo()

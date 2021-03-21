@@ -71,7 +71,7 @@ public:
 
     QVector<sActivityInfo> activities;
 public:
-    sAppInfo(QString name, int profilesCount);
+    sAppInfo(const QString& name, int profilesCount);
     sAppInfo();
     ~sAppInfo();
 };
@@ -127,7 +127,7 @@ protected:
     QVector<sAppInfo*>  m_Applications;
     QVector<sProfile>   m_Profiles;
 
-    int                 m_LastLocalActivity;
+    int                 m_LastLocalActivity{};
     int                 m_CurrentProfile;
     QString             m_StorageFileName;
     QString             m_BackupFolder;
@@ -137,7 +137,7 @@ protected:
 
     bool                m_ShowSystemNotifications;
 
-    bool                m_ClientMode;
+    bool                m_ClientMode{};
     QString             m_ClientModeHost;
 
     int                 m_UpdateCounter;
